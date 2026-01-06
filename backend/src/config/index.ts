@@ -1,11 +1,16 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-export default {
-    PORT: process.env.PORT || 5000,
-    JWT_SECRET: process.env.JWT_SECRET as string,
-    DATABASE_URL: process.env.DATABASE_URL as string,
-    CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    NODE_ENV: process.env.NODE_ENV || 'development',
-    COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || '.domain.com'
+const config = {
+  PORT: process.env.PORT || 5000,
+  NODE_ENV: process.env.NODE_ENV || "development",
+
+  JWT_SECRET: process.env.JWT_SECRET!,
+  JWT_EXPIRES_IN: "4h",
+
+  COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || ".domain.com", // change to your real domain later
+  COOKIE_SECURE: process.env.NODE_ENV === "production",
+  CORS_ORIGIN: process.env.CORS_ORIGIN,
 };
+
+export default config;

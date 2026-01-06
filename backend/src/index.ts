@@ -1,30 +1,55 @@
-import express, { Request, Response, NextFunction } from 'express';
-import cookieParser from 'cookie-parser';
-import cors from 'cors';
-import config from './config';
-import authRoutes from './api/routes/auth';
-import attemptRoutes from './api/routes/attempt';
+import express, { Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+import config from "./config";
+import authRoutes from "./api/routes/auth";
+import attemptRoutes from "./api/routes/attempt";
+import pool from "./config/db";
+import violationRoutes from "./api/routes/violation";
+
+
+
 
 const app = express();
 
-// Middlewares
+// ---------- Middlewares ----------
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors({
+app.use(
+  cors({
     origin: config.CORS_ORIGIN,
-    credentials: true
-}));
+    credentials: true,
+  })
+);
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/attempts', attemptRoutes);
+// ---------- Routes ----------
+app.use("/api/auth", authRoutes);
+app.use("/api/attempts", attemptRoutes);
+app.use("/api/violations", violationRoutes);
 
-// Error handling
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    console.error(err.stack);
-    res.status(500).json({ message: 'Internal Server Error' });
-});
+// ---------- Error Handler ----------
+app.use(
+  (err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    console.error("❌ Error:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+);
 
-app.listen(config.PORT, () => {
-    console.log(`Server running on port ${config.PORT} in ${config.NODE_ENV} mode`);
-});
+// ---------- Start Server AFTER DB Ready ----------
+async function startServer() {
+  try {
+    await pool.query("SELECT 1");
+    console.log("🚀 Database connected");
+
+    app.listen(config.PORT, () => {
+      console.log(
+        `🚀 Server running on port ${config.PORT} (${config.NODE_ENV})`
+      );
+    });
+  } catch (error) {
+    console.error("❌ Database connection failed:", error);
+    process.exit(1); // VERY IMPORTANT
+  }
+}
+
+startServer();

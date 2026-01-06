@@ -1,0 +1,74 @@
+import { Response } from "express";
+import pool from "../../config/db";
+import { AuthRequest } from "../middlewares/auth.middleware";
+import { checkAutoSubmit } from "../../services/violation.service";
+
+
+
+export async function logViolation(req: AuthRequest, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { attemptId, violationType } = req.body;
+    const userId = req.user.userId;
+
+    if (!attemptId || !violationType) {
+      return res.status(400).json({
+        message: "attemptId and violationType are required",
+      });
+    }
+
+    // 1️⃣ Validate attempt ownership
+    const attemptResult = await pool.query(
+      `SELECT status FROM attempts
+       WHERE id = $1 AND user_id = $2`,
+      [attemptId, userId]
+    );
+
+    if (attemptResult.rowCount === 0) {
+      return res.status(404).json({ message: "Attempt not found" });
+    }
+
+    if (attemptResult.rows[0].status !== "IN_PROGRESS") {
+      return res.status(409).json({
+        message: "Attempt already submitted",
+      });
+    }
+
+    // 2️⃣ Insert violation
+    await pool.query(
+      `INSERT INTO violations (attempt_id, violation_type)
+       VALUES ($1, $2)`,
+      [attemptId, violationType]
+    );
+
+    // 3️⃣ Check auto-submit rules
+    const enforcement = await checkAutoSubmit(attemptId);
+
+    if (enforcement.autoSubmit) {
+      await pool.query(
+        `UPDATE attempts
+         SET status = 'AUTO_SUBMITTED',
+             end_time = NOW()
+         WHERE id = $1 AND status = 'IN_PROGRESS'`,
+        [attemptId]
+      );
+
+      return res.status(200).json({
+        message: "Violation logged. Attempt auto-submitted.",
+        autoSubmitted: true,
+        reason: enforcement.reason,
+      });
+    }
+
+    return res.status(201).json({
+      message: "Violation logged",
+      autoSubmitted: false,
+    });
+  } catch (error) {
+    console.error("❌ logViolation error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}

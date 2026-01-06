@@ -1,10 +1,11 @@
-import express from 'express';
-import { startAttempt, submitAttempt } from '../controllers/attemptController';
-import authMiddleware from '../middlewares/auth';
+import { Router } from "express";
+import { startAttempt, submitAttempt } from "../controllers/attempt.controller";
+import { requireAuth } from "../middlewares/auth.middleware";
+import { requireCandidate } from "../middlewares/role.middleware";
 
-const router = express.Router();
+const router = Router();
 
-router.post('/start', authMiddleware(['candidate']), startAttempt);
-router.post('/:id/submit', authMiddleware(['candidate']), submitAttempt);
+router.post("/start", requireAuth, requireCandidate, startAttempt);
+router.post("/submit", requireAuth, requireCandidate, submitAttempt);
 
 export default router;
