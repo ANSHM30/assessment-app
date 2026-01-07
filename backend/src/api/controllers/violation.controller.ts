@@ -2,6 +2,7 @@ import { Response } from "express";
 import pool from "../../config/db";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import { checkAutoSubmit } from "../../services/violation.service";
+import { enforceTimeLimit } from "../../services/timer.service";
 
 
 
@@ -36,6 +37,16 @@ export async function logViolation(req: AuthRequest, res: Response) {
         message: "Attempt already submitted",
       });
     }
+    
+const timerCheck = await enforceTimeLimit(attemptId);
+
+if (timerCheck.expired) {
+  return res.status(403).json({
+    message: "Time expired. Attempt auto-submitted.",
+    autoSubmitted: true,
+    reason: "TIME_EXPIRED",
+  });
+}
 
     // 2️⃣ Insert violation
     await pool.query(

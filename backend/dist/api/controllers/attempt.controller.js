@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.startAttempt = startAttempt;
 exports.submitAttempt = submitAttempt;
 const db_1 = __importDefault(require("../../config/db"));
+const timer_service_1 = require("../../services/timer.service");
+const scoring_service_1 = require("../../services/scoring.service");
 async function startAttempt(req, res) {
     try {
         if (!req.user) {
@@ -58,6 +60,8 @@ async function submitAttempt(req, res) {
         if (!attemptId) {
             return res.status(400).json({ message: "attemptId is required" });
         }
+        await (0, scoring_service_1.autoGradeMCQs)(attemptId);
+        const finalScore = await (0, scoring_service_1.calculateFinalScore)(attemptId);
         // 1️⃣ Fetch attempt
         const attemptResult = await db_1.default.query(`SELECT id, status FROM attempts
        WHERE id = $1 AND user_id = $2`, [attemptId, userId]);
@@ -65,17 +69,26 @@ async function submitAttempt(req, res) {
             return res.status(404).json({ message: "Attempt not found" });
         }
         const attempt = attemptResult.rows[0];
-        // 2️⃣ Ensure attempt is active
+        // 2️⃣ Enforce timer BEFORE submit
+        const timerCheck = await (0, timer_service_1.enforceTimeLimit)(attemptId);
+        if (timerCheck.expired) {
+            return res.status(403).json({
+                message: "Time expired. Attempt auto-submitted.",
+                autoSubmitted: true,
+                reason: "TIME_EXPIRED",
+            });
+        }
+        // 3️⃣ Ensure attempt is still active
         if (attempt.status !== "IN_PROGRESS") {
             return res.status(409).json({
                 message: "Attempt already submitted",
             });
         }
-        // 3️⃣ Submit attempt
+        // 4️⃣ Submit attempt manually
         await db_1.default.query(`UPDATE attempts
        SET status = 'SUBMITTED',
            end_time = NOW()
-       WHERE id = $1`, [attemptId]);
+       WHERE id = $1 AND status = 'IN_PROGRESS'`, [attemptId]);
         return res.json({
             message: "Attempt submitted successfully",
         });

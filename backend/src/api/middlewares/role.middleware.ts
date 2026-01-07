@@ -12,3 +12,25 @@ export function requireCandidate(
   }
   next();
 }
+
+export function requireAdmin(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const role = req.user?.role?.toUpperCase();
+  if (role !== "ADMIN") {
+    return res.status(403).json({ message: "Access denied" });
+  }
+  next();
+}
+
+export function requireRole(roleName: string) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    const role = req.user?.role?.toUpperCase();
+    if (role !== roleName.toUpperCase()) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    next();
+  };
+}

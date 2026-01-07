@@ -1,6 +1,8 @@
 import { Response } from "express";
 import pool from "../../config/db";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { enforceTimeLimit } from "../../services/timer.service";
+import { autoGradeMCQs, calculateFinalScore } from "../../services/scoring.service";
 
 export async function startAttempt(req: AuthRequest, res: Response) {
   try {
@@ -76,6 +78,10 @@ export async function submitAttempt(req: AuthRequest, res: Response) {
       return res.status(400).json({ message: "attemptId is required" });
     }
 
+    await autoGradeMCQs(attemptId);
+const finalScore = await calculateFinalScore(attemptId);
+
+
     // 1️⃣ Fetch attempt
     const attemptResult = await pool.query(
       `SELECT id, status FROM attempts
@@ -89,19 +95,30 @@ export async function submitAttempt(req: AuthRequest, res: Response) {
 
     const attempt = attemptResult.rows[0];
 
-    // 2️⃣ Ensure attempt is active
+    // 2️⃣ Enforce timer BEFORE submit
+    const timerCheck = await enforceTimeLimit(attemptId);
+
+    if (timerCheck.expired) {
+      return res.status(403).json({
+        message: "Time expired. Attempt auto-submitted.",
+        autoSubmitted: true,
+        reason: "TIME_EXPIRED",
+      });
+    }
+
+    // 3️⃣ Ensure attempt is still active
     if (attempt.status !== "IN_PROGRESS") {
       return res.status(409).json({
         message: "Attempt already submitted",
       });
     }
 
-    // 3️⃣ Submit attempt
+    // 4️⃣ Submit attempt manually
     await pool.query(
       `UPDATE attempts
        SET status = 'SUBMITTED',
            end_time = NOW()
-       WHERE id = $1`,
+       WHERE id = $1 AND status = 'IN_PROGRESS'`,
       [attemptId]
     );
 

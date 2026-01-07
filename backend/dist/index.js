@@ -10,6 +10,9 @@ const config_1 = __importDefault(require("./config"));
 const auth_1 = __importDefault(require("./api/routes/auth"));
 const attempt_1 = __importDefault(require("./api/routes/attempt"));
 const db_1 = __importDefault(require("./config/db"));
+const violation_1 = __importDefault(require("./api/routes/violation"));
+const admin_1 = __importDefault(require("./api/routes/admin"));
+const result_1 = __importDefault(require("./api/routes/result"));
 const app = (0, express_1.default)();
 // ---------- Middlewares ----------
 app.use(express_1.default.json());
@@ -21,6 +24,9 @@ app.use((0, cors_1.default)({
 // ---------- Routes ----------
 app.use("/api/auth", auth_1.default);
 app.use("/api/attempts", attempt_1.default);
+app.use("/api/violations", violation_1.default);
+app.use("/api/admin", admin_1.default);
+app.use("/api/results", result_1.default);
 // ---------- Error Handler ----------
 app.use((err, req, res, _next) => {
     console.error("❌ Error:", err);

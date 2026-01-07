@@ -6,6 +6,8 @@ import authRoutes from "./api/routes/auth";
 import attemptRoutes from "./api/routes/attempt";
 import pool from "./config/db";
 import violationRoutes from "./api/routes/violation";
+import adminRoutes from "./api/routes/admin";
+import resultRoutes from "./api/routes/result";
 
 
 
@@ -26,6 +28,10 @@ app.use(
 app.use("/api/auth", authRoutes);
 app.use("/api/attempts", attemptRoutes);
 app.use("/api/violations", violationRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/results", resultRoutes);
+
+
 
 // ---------- Error Handler ----------
 app.use(
