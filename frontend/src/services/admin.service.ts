@@ -4,6 +4,10 @@ export const getAssessments = () => {
   return apiFetch("/api/admin/assessments");
 };
 
+export const getAssessmentById = (assessmentId: string | number) => {
+  return apiFetch(`/api/admin/assessments/${assessmentId}`);
+};
+
 export const getAssessmentQuestions = (assessmentId: string | number) => {
   return apiFetch(`/api/admin/assessments/${assessmentId}/questions`);
 };
@@ -44,6 +48,12 @@ export const publishResult = (attemptId: string | number) => {
   });
 };
 
+export const publishAllResults = (assessmentId: string | number) => {
+  return apiFetch(`/api/admin/assessments/${assessmentId}/publish-all`, {
+    method: "POST",
+  });
+};
+
 export const createAssessment = (payload: {
   title: string;
   duration_minutes: number;
@@ -52,6 +62,21 @@ export const createAssessment = (payload: {
 }) => {
   return apiFetch("/api/admin/assessments", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateAssessment = (
+  assessmentId: string | number,
+  payload: {
+    title?: string;
+    duration_minutes?: number;
+    pass_percentage?: number;
+    status?: string;
+  }
+) => {
+  return apiFetch(`/api/admin/assessments/${assessmentId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 };
@@ -97,4 +122,15 @@ export const addCandidate = (payload: { email: string; full_name?: string }) => 
     method: "POST",
     body: JSON.stringify(payload),
   });
+};
+
+export const bulkAddCandidates = (candidates: { email: string; full_name?: string }[]) => {
+  return apiFetch("/api/admin/candidates/bulk", {
+    method: "POST",
+    body: JSON.stringify({ candidates }),
+  });
+};
+
+export const getDashboardStats = () => {
+  return apiFetch("/api/admin/dashboard-stats");
 };

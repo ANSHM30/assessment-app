@@ -74,15 +74,25 @@ export default function NewAssessmentPage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Pass Percentage</label>
-            <input
-              required
-              type="number"
-              value={formData.pass_percentage}
-              onChange={(e) => setFormData({ ...formData, pass_percentage: Number(e.target.value) })}
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 focus:outline-none focus:border-yellow-500 transition-colors"
-            />
+          <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-6 space-y-6">
+            <h2 className="text-lg font-semibold text-yellow-500 flex items-center gap-2">
+              🏆 Pass/Fail Criteria
+            </h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Pass Percentage (%)</label>
+              <input
+                required
+                type="number"
+                min="0"
+                max="100"
+                value={formData.pass_percentage}
+                onChange={(e) => setFormData({ ...formData, pass_percentage: Number(e.target.value) })}
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2 focus:outline-none focus:border-yellow-500 transition-colors"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Candidates must score at least this percentage of the total marks to pass.
+              </p>
+            </div>
           </div>
 
           <button

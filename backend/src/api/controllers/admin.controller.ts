@@ -19,6 +19,30 @@ export async function getAssessments(req: Request, res: Response) {
 }
 
 /**
+ * GET /api/admin/assessments/:assessmentId
+ */
+export async function getAssessmentById(req: Request, res: Response) {
+  try {
+    const { assessmentId } = req.params;
+    const result = await pool.query(
+      `SELECT id, title, duration_minutes, pass_percentage, status, code, total_marks
+       FROM assessments
+       WHERE id = $1`,
+      [assessmentId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Assessment not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("❌ getAssessmentById error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+/**
  * GET /api/admin/assessments/:assessmentId/attempts
  * List all attempts for an assessment
  */
@@ -284,6 +308,39 @@ export async function publishResult(req: Request, res: Response) {
   }
 }
 
+export async function publishAllResults(req: Request, res: Response) {
+  try {
+    const assessmentId = Number(req.params.assessmentId);
+
+    if (!assessmentId || Number.isNaN(assessmentId)) {
+      return res.status(400).json({
+        message: "Invalid or missing assessmentId",
+      });
+    }
+
+    // Update all attempts for this assessment that are finalized (have a result) and not yet published
+    const result = await pool.query(
+      `
+      UPDATE attempts
+      SET is_published = true
+      WHERE assessment_id = $1
+        AND result IS NOT NULL
+        AND is_published = false
+      RETURNING id
+      `,
+      [assessmentId]
+    );
+
+    res.json({
+      message: `${result.rowCount} results published successfully`,
+      count: result.rowCount,
+    });
+  } catch (error) {
+    console.error("❌ publishAllResults error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 /**
  * POST /api/admin/assessments
  * Create a new assessment
@@ -312,6 +369,37 @@ export async function createAssessment(req: Request, res: Response) {
     });
   } catch (error) {
     console.error("❌ createAssessment error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+/**
+ * PATCH /api/admin/assessments/:assessmentId
+ * Update assessment details
+ */
+export async function updateAssessment(req: Request, res: Response) {
+  try {
+    const { assessmentId } = req.params;
+    const { title, duration_minutes, pass_percentage, status } = req.body;
+
+    const result = await pool.query(
+      `UPDATE assessments
+       SET title = COALESCE($1, title),
+           duration_minutes = COALESCE($2, duration_minutes),
+           pass_percentage = COALESCE($3, pass_percentage),
+           status = COALESCE($4, status)
+       WHERE id = $5
+       RETURNING id`,
+      [title, duration_minutes, pass_percentage, status, assessmentId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Assessment not found" });
+    }
+
+    res.json({ message: "Assessment updated successfully" });
+  } catch (error) {
+    console.error("❌ updateAssessment error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -527,7 +615,7 @@ export async function getCandidates(req: Request, res: Response) {
     const result = await pool.query(
       `SELECT id, email, full_name, created_at
        FROM users
-       WHERE role = 'candidate'
+       WHERE role = 'CANDIDATE'
        ORDER BY created_at DESC`
     );
     res.json(result.rows);
@@ -550,7 +638,7 @@ export async function addCandidate(req: Request, res: Response) {
 
     const result = await pool.query(
       `INSERT INTO users (email, full_name, role)
-       VALUES ($1, $2, 'candidate')
+       VALUES ($1, $2, 'CANDIDATE')
        RETURNING id`,
       [email, full_name || '']
     );
@@ -564,6 +652,119 @@ export async function addCandidate(req: Request, res: Response) {
       return res.status(409).json({ message: "Candidate already exists" });
     }
     console.error("❌ addCandidate error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+/**
+ * POST /api/admin/candidates/bulk
+ */
+export async function bulkAddCandidates(req: Request, res: Response) {
+  const client = await pool.connect();
+  try {
+    const { candidates } = req.body;
+
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return res.status(400).json({ message: "Invalid or empty candidates list" });
+    }
+
+    await client.query("BEGIN");
+
+    const insertedIds = [];
+    let skipCount = 0;
+
+    for (const candidate of candidates) {
+      const { email, full_name } = candidate;
+      if (!email) continue;
+
+      try {
+        const result = await client.query(
+          `INSERT INTO users (email, full_name, role)
+           VALUES ($1, $2, 'CANDIDATE')
+           ON CONFLICT (email) DO NOTHING
+           RETURNING id`,
+          [email, full_name || ""]
+        );
+
+        if (result.rowCount > 0) {
+          insertedIds.push(result.rows[0].id);
+        } else {
+          skipCount++;
+        }
+      } catch (err) {
+        console.error(`❌ Error inserting candidate ${email}:`, err);
+        // Continue with other candidates
+      }
+    }
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      message: "Bulk upload completed",
+      insertedCount: insertedIds.length,
+      skippedCount: skipCount,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("❌ bulkAddCandidates error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * GET /api/admin/dashboard-stats
+ */
+export async function getDashboardStats(req: Request, res: Response) {
+  try {
+    // 1. Total counts
+    const countsResult = await pool.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM assessments) as total_assessments,
+        (SELECT COUNT(*) FROM users WHERE role = 'CANDIDATE') as total_candidates,
+        (SELECT COUNT(*) FROM attempts) as total_attempts,
+        (SELECT COUNT(*) FROM attempts WHERE result = 'PASS') as total_pass,
+        (SELECT COUNT(*) FROM attempts WHERE result = 'FAIL') as total_fail
+    `);
+
+    // 2. Performance by assessment
+    const assessmentStatsResult = await pool.query(`
+      SELECT 
+        a.id,
+        a.title,
+        COUNT(att.id) as total_attempts,
+        COUNT(CASE WHEN att.result = 'PASS' THEN 1 END) as pass_count,
+        COUNT(CASE WHEN att.result = 'FAIL' THEN 1 END) as fail_count
+      FROM assessments a
+      LEFT JOIN attempts att ON a.id = att.assessment_id
+      GROUP BY a.id, a.title
+    `);
+
+    // 3. Recent results (last 10)
+    const recentResultsResult = await pool.query(`
+      SELECT 
+        att.id,
+        u.email,
+        u.full_name,
+        a.title as assessment_title,
+        att.final_score,
+        att.result,
+        att.start_time
+      FROM attempts att
+      JOIN users u ON att.user_id = u.id
+      JOIN assessments a ON att.assessment_id = a.id
+      ORDER BY att.start_time DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      summary: countsResult.rows[0],
+      assessmentStats: assessmentStatsResult.rows,
+      recentResults: recentResultsResult.rows
+    });
+  } catch (error) {
+    console.error("❌ getDashboardStats error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }

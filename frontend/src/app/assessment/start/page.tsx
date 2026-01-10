@@ -13,7 +13,13 @@ export default function StartAssessmentPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
 
-  if (authLoading) {
+  useEffect(() => {
+    if (!authLoading && user?.role?.toUpperCase() === "ADMIN") {
+      router.push("/admin");
+    }
+  }, [user, authLoading, router]);
+
+  if (authLoading || user?.role?.toUpperCase() === "ADMIN") {
     return (
       <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
         <div className="text-center">

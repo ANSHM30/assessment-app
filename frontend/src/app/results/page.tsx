@@ -3,8 +3,17 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
+interface AssessmentResult {
+  attempt_id: string;
+  title: string;
+  final_score: number;
+  total_marks: number;
+  result: string;
+  end_time: string;
+}
+
 export default function ResultsPage() {
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<AssessmentResult[]>([]);
 
   useEffect(() => {
     apiFetch("/api/results/me").then(setResults);
@@ -28,11 +37,20 @@ export default function ResultsPage() {
                 Completed on {new Date(r.end_time).toLocaleDateString()}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-500 uppercase font-bold tracking-widest mb-1">Score</p>
-              <p className="text-2xl font-bold text-yellow-500">
-                {r.final_score} <span className="text-sm text-gray-500 font-normal">/ {r.total_marks}</span>
-              </p>
+            <div className="text-right flex flex-col items-end gap-2">
+              <div className="flex flex-col items-end">
+                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-0.5">Score</p>
+                <p className="text-2xl font-bold text-yellow-500">
+                  {r.final_score} <span className="text-sm text-gray-500 font-normal">/ {r.total_marks}</span>
+                </p>
+              </div>
+              {r.result && (
+                <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${
+                  r.result === 'PASS' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                }`}>
+                  {r.result}
+                </span>
+              )}
             </div>
           </div>
         ))

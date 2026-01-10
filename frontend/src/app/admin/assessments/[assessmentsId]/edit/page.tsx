@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { getAssessmentQuestions, addQuestion, bulkAddQuestions, deleteQuestion } from "@/services/admin.service";
+import { getAssessmentQuestions, addQuestion, bulkAddQuestions, deleteQuestion, getAssessmentById, updateAssessment } from "@/services/admin.service";
 import Link from "next/link";
 
 export default function EditAssessmentPage() {
   const params = useParams();
   const assessmentId = params.assessmentsId as string;
+  const [assessment, setAssessment] = useState<any>(null);
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [updatingCriteria, setUpdatingCriteria] = useState(false);
   const [showSmartPaste, setShowSmartPaste] = useState(false);
   const [smartPasteText, setSmartPasteText] = useState("");
   const [parsedQuestions, setParsedQuestions] = useState<any[]>([]);
@@ -24,13 +26,46 @@ export default function EditAssessmentPage() {
   });
 
   useEffect(() => {
-    loadQuestions();
+    loadData();
   }, [assessmentId]);
+
+  async function loadData() {
+    try {
+      const [qData, aData] = await Promise.all([
+        getAssessmentQuestions(assessmentId),
+        getAssessmentById(assessmentId)
+      ]);
+      setQuestions(qData);
+      setAssessment(aData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUpdateCriteria() {
+    setUpdatingCriteria(true);
+    try {
+      await updateAssessment(assessmentId, {
+        pass_percentage: assessment.pass_percentage
+      });
+      alert("Criteria updated successfully");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update criteria");
+    } finally {
+      setUpdatingCriteria(false);
+    }
+  }
 
   async function loadQuestions() {
     try {
       const data = await getAssessmentQuestions(assessmentId);
       setQuestions(data);
+      // Also refresh assessment to get updated total_marks
+      const aData = await getAssessmentById(assessmentId);
+      setAssessment(aData);
     } catch (err) {
       console.error(err);
     } finally {
@@ -159,9 +194,14 @@ export default function EditAssessmentPage() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-8">
       <div className="max-w-4xl mx-auto">
-        <Link href="/admin/assessments" className="text-gray-400 hover:text-white mb-6 inline-block">
-          ← Back to Assessments
+        <Link href="/admin" className="text-gray-400 hover:text-white mb-4 inline-block">
+          ← Back to Dashboard
         </Link>
+        <div className="mb-6">
+          <Link href="/admin/assessments" className="text-gray-400 hover:text-white transition-colors text-sm">
+            ← Back to Assessments
+          </Link>
+        </div>
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Manage Questions</h1>
           <div className="flex gap-3">
@@ -177,6 +217,41 @@ export default function EditAssessmentPage() {
             </button>
           </div>
         </div>
+        
+        {assessment && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 mb-8 shadow-xl">
+            <h2 className="text-xl font-bold mb-6 text-yellow-500 flex items-center gap-2">
+              🏆 Pass/Fail Criteria
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Pass Percentage (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={assessment.pass_percentage}
+                  onChange={(e) => setAssessment({ ...assessment, pass_percentage: Number(e.target.value) })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 focus:outline-none focus:border-yellow-500 transition-colors"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1 uppercase font-bold tracking-widest">Calculated Passing Marks</p>
+                <p className="text-xl font-bold text-white">
+                  {((assessment.total_marks * assessment.pass_percentage) / 100).toFixed(2)} 
+                  <span className="text-sm font-normal text-gray-500 ml-2">/ {assessment.total_marks}</span>
+                </p>
+              </div>
+              <button
+                onClick={handleUpdateCriteria}
+                disabled={updatingCriteria}
+                className="bg-yellow-500 hover:bg-yellow-600 text-black px-6 py-2 rounded-lg font-bold transition-all disabled:opacity-50"
+              >
+                {updatingCriteria ? "Saving..." : "Update Criteria"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {showSmartPaste ? (
           <div className="space-y-8">

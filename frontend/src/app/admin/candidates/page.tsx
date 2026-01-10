@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCandidates, addCandidate } from "@/services/admin.service";
+import { getCandidates, addCandidate, bulkAddCandidates } from "@/services/admin.service";
 import Link from "next/link";
 
 export default function CandidatesPage() {
@@ -10,6 +10,7 @@ export default function CandidatesPage() {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [adding, setAdding] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const loadCandidates = async () => {
     try {
@@ -45,6 +46,65 @@ export default function CandidatesPage() {
     }
   };
 
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      const rows = text.split("\n");
+      const parsedCandidates: { email: string; full_name: string }[] = [];
+
+      // Assume CSV format: name,email OR email,name
+      // We'll try to detect based on @ in the string
+      rows.forEach((row, index) => {
+        if (index === 0 && (row.toLowerCase().includes("email") || row.toLowerCase().includes("name"))) {
+          return; // Skip header
+        }
+        
+        const cols = row.split(",").map(c => c.trim());
+        if (cols.length >= 2) {
+          let email = "";
+          let name = "";
+          
+          if (cols[0].includes("@")) {
+            email = cols[0];
+            name = cols[1];
+          } else if (cols[1].includes("@")) {
+            name = cols[0];
+            email = cols[1];
+          }
+
+          if (email) {
+            parsedCandidates.push({ email, full_name: name });
+          }
+        }
+      });
+
+      if (parsedCandidates.length === 0) {
+        alert("No valid candidates found in CSV. Please ensure format is 'name,email' or 'email,name'.");
+        setUploading(false);
+        return;
+      }
+
+      try {
+        const res = await bulkAddCandidates(parsedCandidates);
+        alert(`Bulk upload completed! Added: ${res.insertedCount}, Skipped (already exists): ${res.skippedCount}`);
+        await loadCandidates();
+      } catch (err: any) {
+        console.error("Failed to upload CSV", err);
+        alert(err.message || "Failed to upload CSV");
+      } finally {
+        setUploading(false);
+        // Clear input
+        e.target.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
@@ -61,41 +121,69 @@ export default function CandidatesPage() {
         </Link>
         <h1 className="text-3xl font-bold mb-8 text-white">Manage Candidates</h1>
 
-        {/* Add Candidate Form */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 mb-8 shadow-lg">
-          <h2 className="text-xl font-semibold mb-4 text-yellow-500">Add New Candidate</h2>
-          <form onSubmit={handleAddCandidate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">Email Address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="candidate@example.com"
-                required
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">Full Name</label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="John Doe"
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              />
-            </div>
-            <div className="md:col-span-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          {/* Add Candidate Form */}
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 shadow-lg">
+            <h2 className="text-xl font-semibold mb-4 text-yellow-500">Add New Candidate</h2>
+            <form onSubmit={handleAddCandidate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="candidate@example.com"
+                  required
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="John Doe"
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                />
+              </div>
               <button
                 type="submit"
                 disabled={adding}
-                className="w-full md:w-auto bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-2 rounded-lg font-bold transition-colors disabled:opacity-50"
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-2 rounded-lg font-bold transition-colors disabled:opacity-50"
               >
                 {adding ? "Adding..." : "Add Candidate"}
               </button>
+            </form>
+          </div>
+
+          {/* Bulk Upload CSV */}
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 shadow-lg">
+            <h2 className="text-xl font-semibold mb-4 text-yellow-500">Bulk Upload (CSV)</h2>
+            <p className="text-sm text-gray-400 mb-4">
+              Upload a CSV file with candidates. Format: <code className="text-yellow-500">name,email</code> or <code className="text-yellow-500">email,name</code>. Header row is optional.
+            </p>
+            <div className="space-y-4">
+              <div className="border-2 border-dashed border-neutral-700 rounded-lg p-8 text-center hover:border-yellow-500 transition-colors cursor-pointer relative">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCsvUpload}
+                  disabled={uploading}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                />
+                <div className="flex flex-col items-center">
+                  <svg className="w-10 h-10 text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <p className="text-gray-300 font-medium">
+                    {uploading ? "Processing..." : "Click or drag CSV file to upload"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Maximum 5MB</p>
+                </div>
+              </div>
             </div>
-          </form>
+          </div>
         </div>
 
         {/* Candidates List */}

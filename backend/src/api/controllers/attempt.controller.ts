@@ -1,6 +1,8 @@
 import { Response } from "express";
 import pool from "../../config/db";
 import { AuthRequest } from "../middlewares/auth.middleware";
+import { autoGradeMCQs, calculateFinalScore } from "../../services/scoring.service";
+import { calculatePassFail } from "../../services/result.service";
 
 /**
  * START ATTEMPT
@@ -20,11 +22,13 @@ export async function startAttempt(req: AuthRequest, res: Response) {
 
     // 1️⃣ Validate assessment
     let assessment;
+    console.log(`DEBUG: startAttempt - assessmentId: ${assessmentId}, assessmentCode: ${assessmentCode}`);
     if (assessmentId) {
       const result = await pool.query(
         `SELECT id, duration_minutes, code FROM assessments WHERE id = $1 AND status = 'ACTIVE'`,
         [assessmentId]
       );
+      console.log(`DEBUG: startAttempt - Query by ID result rowCount: ${result.rowCount}`);
       if (result.rowCount === 0) {
         return res.status(404).json({ message: "Assessment not found or is inactive" });
       }
@@ -34,6 +38,7 @@ export async function startAttempt(req: AuthRequest, res: Response) {
         `SELECT id, duration_minutes, code FROM assessments WHERE code = $1 AND status = 'ACTIVE'`,
         [assessmentCode.toUpperCase()]
       );
+      console.log(`DEBUG: startAttempt - Query by code result rowCount: ${result.rowCount}`);
       if (result.rowCount === 0) {
         return res.status(404).json({ message: "Invalid assessment code or assessment is inactive" });
       }
@@ -123,11 +128,12 @@ export async function submitAttempt(req: AuthRequest, res: Response) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { attemptId } = req.body;
+    const { attemptId: rawAttemptId } = req.body;
+    const attemptId = Number(rawAttemptId);
     const userId = req.user.userId;
 
-    if (!attemptId) {
-      return res.status(400).json({ message: "attemptId is required" });
+    if (!attemptId || Number.isNaN(attemptId)) {
+      return res.status(400).json({ message: "attemptId is required and must be a number" });
     }
 
     // 1️⃣ Fetch attempt
@@ -155,13 +161,22 @@ export async function submitAttempt(req: AuthRequest, res: Response) {
     await pool.query(
       `UPDATE attempts
        SET status = 'SUBMITTED',
-           end_time = NOW()
+           end_time = NOW(),
+           is_published = false
        WHERE id = $1`,
       [attemptId]
     );
 
+    // 4️⃣ Grade MCQs and calculate final score
+    await autoGradeMCQs(attemptId);
+    const score = await calculateFinalScore(attemptId);
+    
+    // 5️⃣ Calculate PASS/FAIL but DON'T return it to candidate yet
+    await calculatePassFail(attemptId);
+
     return res.json({
       message: "Attempt submitted successfully",
+      score: score,
     });
   } catch (error) {
     console.error("❌ submitAttempt error:", error);
@@ -178,8 +193,12 @@ export async function getQuestions(req: AuthRequest, res: Response) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { attemptId } = req.params;
+    const attemptId = Number(req.params.attemptId);
     const userId = req.user.userId;
+
+    if (Number.isNaN(attemptId)) {
+      return res.status(400).json({ message: "Invalid attemptId" });
+    }
 
     // 1️⃣ Verify attempt belongs to user
     console.log(`DEBUG: getQuestions - attemptId: ${attemptId}, userId: ${userId}`);
@@ -230,16 +249,16 @@ export async function saveAnswer(req: AuthRequest, res: Response) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { attemptId } = req.params;
+    const attemptId = Number(req.params.attemptId);
     const { questionId, answer } = req.body;
     const userId = req.user.userId;
 
-    if (!questionId || answer === undefined) {
-      return res.status(400).json({ message: "questionId and answer are required" });
+    if (Number.isNaN(attemptId) || !questionId || answer === undefined) {
+      return res.status(400).json({ message: "Invalid attemptId, questionId or answer" });
     }
 
     // 1️⃣ Verify attempt belongs to user and is active
-    console.log(`DEBUG: saveAnswer - attemptId: ${attemptId}, userId: ${userId}`);
+    console.log(`DEBUG: saveAnswer - attemptId: ${attemptId}, questionId: ${questionId}, answer: ${answer}, userId: ${userId}`);
     const attemptResult = await pool.query(
       `SELECT id
        FROM attempts
@@ -249,19 +268,21 @@ export async function saveAnswer(req: AuthRequest, res: Response) {
 
     if (attemptResult.rowCount === 0) {
       console.log(`DEBUG: saveAnswer - No active attempt found for attemptId: ${attemptId}, userId: ${userId}`);
-      return res.status(404).json({ message: "Active attempt not found" });
+      return res.status(404).json({ message: "Active attempt not found or already submitted" });
     }
 
     // 2️⃣ Insert or update answer
-    await pool.query(
+    const insertResult = await pool.query(
       `INSERT INTO answers (attempt_id, question_id, answer)
        VALUES ($1, $2, $3)
        ON CONFLICT (attempt_id, question_id)
-       DO UPDATE SET answer = EXCLUDED.answer`,
+       DO UPDATE SET answer = EXCLUDED.answer
+       RETURNING id`,
       [attemptId, questionId, answer]
     );
+    console.log(`DEBUG: saveAnswer - Insert result:`, insertResult.rows[0]);
 
-    return res.json({ message: "Answer saved successfully" });
+    return res.json({ message: "Answer saved successfully", answerId: insertResult.rows[0].id });
   } catch (error) {
     console.error("❌ saveAnswer error:", error);
     return res.status(500).json({ message: "Internal server error" });
