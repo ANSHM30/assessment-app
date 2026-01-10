@@ -1,21 +1,22 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export async function apiFetch(
-  url: string,
+  path: string,
   options: RequestInit = {}
 ) {
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    credentials: "include",
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include", // ⭐ sends cookies
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
+    ...options,
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw err;
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Request failed");
   }
 
   return res.json();

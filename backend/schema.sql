@@ -19,6 +19,7 @@ CREATE TABLE assessments (
     total_marks DECIMAL(10, 2),
     pass_percentage INT DEFAULT 40,
     is_active BOOLEAN DEFAULT true,
+    code VARCHAR(10) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -2,7 +2,7 @@ export type Question = {
   id: number;
   question_text: string;
   question_type: "MCQ" | "DESCRIPTIVE";
-  options?: string[];
+  options?: { id: string; text: string }[];
   marks: number;
 };
 

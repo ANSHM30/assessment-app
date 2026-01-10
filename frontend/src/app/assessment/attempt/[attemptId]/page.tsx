@@ -55,17 +55,17 @@ export default function AttemptPage() {
               {idx + 1}. {q.question_text}
             </p>
 
-            {q.question_type === "MCQ" ? (
+            {q.question_type.toUpperCase() === "MCQ" ? (
               q.options?.map((opt) => (
-                <label key={opt} className="block mb-2">
+                <label key={opt.id} className="block mb-2">
                   <input
                     type="radio"
                     name={`q-${q.id}`}
-                    checked={answers[q.id] === opt}
-                    onChange={() => saveAnswer(q.id, opt)}
+                    checked={answers[q.id] === opt.id}
+                    onChange={() => saveAnswer(q.id, opt.id)}
                     className="mr-2"
                   />
-                  {opt}
+                  {opt.text}
                 </label>
               ))
             ) : (

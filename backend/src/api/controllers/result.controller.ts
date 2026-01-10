@@ -13,7 +13,6 @@ export async function getMyResults(req: AuthRequest, res: Response) {
         ass.title,
         a.final_score,
         ass.total_marks,
-        a.result,
         a.end_time
       FROM attempts a
       JOIN assessments ass ON ass.id = a.assessment_id

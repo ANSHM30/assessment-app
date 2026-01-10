@@ -1,10 +1,10 @@
 import { apiFetch } from "@/lib/api";
 
 export const attemptService = {
-  start(assessmentId: number) {
+  start(assessmentCode: string, assessmentId?: number) {
     return apiFetch("/api/attempts/start", {
       method: "POST",
-      body: JSON.stringify({ assessmentId }),
+      body: JSON.stringify({ assessmentId, assessmentCode }),
     });
   },
 
